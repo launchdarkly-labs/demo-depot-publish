@@ -1,0 +1,191 @@
+# Reusable workflow that demo repos call to publish to Demo Depot.
+#
+# Source of truth: launchdarkly-labs/ld-demodepot/.github/workflows/publish-demo.yml (internal).
+# Published copy:  launchdarkly-labs/demo-depot-publish (public), so demo repos of any visibility can
+# call it. After editing here run `pnpm sync:publish`, which pushes the copy and moves its v1 tag.
+#
+# Demo repo side (written by `dd init`):
+#   on: { push: { tags: ["v*"] } }
+#   jobs:
+#     publish:
+#       uses: launchdarkly-labs/demo-depot-publish/.github/workflows/publish-demo.yml@v1
+#       permissions: { id-token: write, contents: read }
+#
+# Steps (SPEC §7.4 / BUILD_PLAN M3):
+#   1. Validate the manifest (Python validator if the Claude skill is in the repo).
+#   2. Build each container for linux/arm64 and push to dd/{slug}/{container}:{version}.
+#   3. Upload demo.yaml, DEMO.md, media, seed, images.json, meta.json, release notes, (Tier 2) source.zip.
+#   4. Write _COMPLETE last. The depot's ingest Lambda validates and lists the version.
+#
+# Account and region defaults mirror infra/config/{stage}.ts (checked by infra/test/publish-workflow.test.ts).
+name: Publish demo to Demo Depot
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: Depot stage to publish to (dev or prod)
+        type: string
+        default: dev
+      aws-account-id:
+        description: Demo Depot AWS account
+        type: string
+        default: "955116512041"
+      aws-region:
+        type: string
+        default: us-east-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ${{ github.ref_name }} to ${{ inputs.stage }}
+    runs-on: ubuntu-latest
+    env:
+      DD_STAGE: ${{ inputs.stage }}
+      AWS_REGION: ${{ inputs.aws-region }}
+      ARTIFACTS_BUCKET: dd-${{ inputs.stage }}-artifacts-${{ inputs.aws-account-id }}
+      ECR_REGISTRY: ${{ inputs.aws-account-id }}.dkr.ecr.${{ inputs.aws-region }}.amazonaws.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Publish runs on tags named vX.Y.Z (got '${GITHUB_REF_NAME}')"; exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Read manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f demo.yaml || { echo "::error::demo.yaml not found at the repo root"; exit 1; }
+          SLUG=$(yq -r '.slug' demo.yaml)
+          [[ "$SLUG" =~ ^[a-z0-9-]{3,40}$ ]] || { echo "::error::slug '$SLUG' must match ^[a-z0-9-]{3,40}$"; exit 1; }
+          TIER=$(yq -r '.tier // 1' demo.yaml)
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          echo "description=$(yq -r '.description // "./DEMO.md"' demo.yaml)" >> "$GITHUB_OUTPUT"
+          echo "cover=$(yq -r '.media.cover' demo.yaml)" >> "$GITHUB_OUTPUT"
+          echo "loop=$(yq -r '.media.loop // ""' demo.yaml)" >> "$GITHUB_OUTPUT"
+          echo "seed=$(yq -r '.launchdarkly.seed // ""' demo.yaml)" >> "$GITHUB_OUTPUT"
+          echo "tier2app=$(yq -r '.tier2.app // ""' demo.yaml)" >> "$GITHUB_OUTPUT"
+          # name|context|dockerfile per container
+          yq -r '.runtime.containers[]? | [.name, .build.context, (.build.dockerfile // "Dockerfile")] | join("|")' demo.yaml > .dd-containers
+          echo "containers<<EOF" >> "$GITHUB_OUTPUT"; cat .dd-containers >> "$GITHUB_OUTPUT"; echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Validate (Python validator from the Claude skill, if present)
+        shell: bash
+        run: |
+          set -euo pipefail
+          V=$(ls .claude/skills/demo-depot/scripts/validate_demo.py 2>/dev/null || true)
+          if [[ -z "$V" ]]; then echo "::notice::No local validator found; the depot validates at ingest."; exit 0; fi
+          pip install --quiet pyyaml
+          python3 "$V" .
+
+      - name: Configure AWS credentials (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/dd-${{ inputs.stage }}-publish
+          role-session-name: dd-publish-${{ github.run_id }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to ECR
+        if: steps.manifest.outputs.tier == '1'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: steps.manifest.outputs.tier == '1'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push images (linux/arm64)
+        if: steps.manifest.outputs.tier == '1'
+        shell: bash
+        env:
+          SLUG: ${{ steps.manifest.outputs.slug }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "{}" > images.json
+          while IFS='|' read -r NAME CONTEXT DOCKERFILE; do
+            [[ -z "$NAME" ]] && continue
+            REPO="dd/${SLUG}/${NAME}"
+            aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1 || \
+              aws ecr create-repository --repository-name "$REPO" --image-scanning-configuration scanOnPush=true \
+                --tags Key=dd:managed,Value=true Key=dd:demo,Value="$SLUG" Key=dd:stage,Value="$DD_STAGE" >/dev/null
+            IMAGE="${ECR_REGISTRY}/${REPO}:${VERSION}"
+            echo "::group::build ${NAME} -> ${IMAGE}"
+            docker buildx build --platform linux/arm64 --push --provenance=false \
+              -f "${CONTEXT}/${DOCKERFILE}" -t "$IMAGE" \
+              --label "dd.demo=${SLUG}" --label "dd.version=${VERSION}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              "$CONTEXT"
+            echo "::endgroup::"
+            DIGEST=$(aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="$VERSION" --query 'imageDetails[0].imageDigest' --output text)
+            jq --arg n "$NAME" --arg d "$DIGEST" '. + {($n): $d}' images.json > images.tmp && mv images.tmp images.json
+          done < .dd-containers
+          cat images.json
+
+      - name: Package Tier 2 source
+        if: steps.manifest.outputs.tier == '2'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=source.zip HEAD
+          echo "{}" > images.json
+
+      - name: Release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # GitHub release body if one exists, otherwise the annotated tag's message (via the API: a
+          # shallow checkout peels annotated tags to their commit, so `git tag -l --format=%(contents)` is wrong here).
+          if ! gh release view "${GITHUB_REF_NAME}" --json body -q .body > release-notes.md 2>/dev/null || [[ ! -s release-notes.md ]]; then
+            REF=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}" 2>/dev/null || echo '{}')
+            if [[ "$(jq -r '.object.type // empty' <<<"$REF")" == "tag" ]]; then
+              gh api "repos/${GITHUB_REPOSITORY}/git/tags/$(jq -r .object.sha <<<"$REF")" -q .message > release-notes.md || : > release-notes.md
+            else
+              : > release-notes.md   # lightweight tag, no release: no notes
+            fi
+          fi
+          head -c 20000 release-notes.md > release-notes.tmp && mv release-notes.tmp release-notes.md
+
+      - name: Upload to the depot
+        shell: bash
+        env:
+          SLUG: ${{ steps.manifest.outputs.slug }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DESCRIPTION: ${{ steps.manifest.outputs.description }}
+          COVER: ${{ steps.manifest.outputs.cover }}
+          LOOP: ${{ steps.manifest.outputs.loop }}
+          SEED: ${{ steps.manifest.outputs.seed }}
+          TIER: ${{ steps.manifest.outputs.tier }}
+        run: |
+          set -euo pipefail
+          DEST="s3://${ARTIFACTS_BUCKET}/publish/${SLUG}/${VERSION}"
+          if aws s3 ls "${DEST}/_COMPLETE" >/dev/null 2>&1; then
+            echo "::error::Version ${VERSION} of ${SLUG} was already published. Versions are immutable; tag a new one."; exit 1
+          fi
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg actor "$GITHUB_ACTOR" --arg sha "$GITHUB_SHA" --arg runId "$GITHUB_RUN_ID" \
+                --arg ref "$GITHUB_REF" --arg tag "$GITHUB_REF_NAME" --arg wf "${GITHUB_WORKFLOW_REF:-}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                '{repo:$repo, actor:$actor, sha:$sha, runId:$runId, ref:$ref, tag:$tag, workflowRef:$wf, publishedAt:$at}' > meta.json
+          aws s3 cp demo.yaml "${DEST}/demo.yaml"
+          aws s3 cp "$DESCRIPTION" "${DEST}/DEMO.md"
+          aws s3 cp "$COVER" "${DEST}/media/$(basename "$COVER")"
+          [[ -n "$LOOP" ]] && aws s3 cp "$LOOP" "${DEST}/media/$(basename "$LOOP")"
+          [[ -n "$SEED" ]] && aws s3 cp "$SEED" "${DEST}/ld/seed.json"
+          [[ "$TIER" == "2" ]] && aws s3 cp source.zip "${DEST}/source.zip"
+          aws s3 cp images.json "${DEST}/images.json"
+          aws s3 cp meta.json "${DEST}/meta.json"
+          aws s3 cp release-notes.md "${DEST}/release-notes.md"
+          # The completion marker goes last; the depot ingests on this object.
+          echo "${GITHUB_RUN_ID}" | aws s3 cp - "${DEST}/_COMPLETE"
+          echo "::notice::Uploaded ${SLUG}@${VERSION} to Demo Depot (${DD_STAGE}). Ingest runs within a minute."
