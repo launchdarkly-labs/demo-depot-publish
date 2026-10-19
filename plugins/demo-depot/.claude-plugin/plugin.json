@@ -1,0 +1,16 @@
+{
+  "name": "demo-depot",
+  "version": "0.1.0",
+  "description": "Build LaunchDarkly SE demos that are ready to publish to Demo Depot: inventory a repo, write demo.yaml and the seed, validate, and hand off.",
+  "author": {
+    "name": "LaunchDarkly SE Center of Excellence"
+  },
+  "homepage": "https://demodepot.launchdarklydemos.com/docs/onboarding",
+  "repository": "https://github.com/launchdarkly-labs/demo-depot-publish",
+  "keywords": [
+    "launchdarkly",
+    "demo",
+    "demo-depot",
+    "feature-flags"
+  ]
+}

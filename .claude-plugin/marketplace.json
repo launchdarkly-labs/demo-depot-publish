@@ -1,0 +1,14 @@
+{
+  "name": "demo-depot",
+  "description": "Demo Depot tooling for LaunchDarkly Solutions Engineers.",
+  "owner": {
+    "name": "LaunchDarkly SE Center of Excellence"
+  },
+  "plugins": [
+    {
+      "name": "demo-depot",
+      "source": "./plugins/demo-depot",
+      "description": "The demo-depot skill: make any repo Demo Depot ready (inventory, manifest, seed, validator)."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# .github/workflows/publish.yml. Tagging vX.Y.Z publishes the demo to Demo Depot.
+name: Publish to Demo Depot
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    uses: launchdarkly-labs/demo-depot-publish/.github/workflows/publish-demo.yml@v1
+    permissions:
+      id-token: write
+      contents: read

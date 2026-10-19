@@ -1,0 +1,33 @@
+{
+  "seedVersion": 1,
+  "environments": [{ "key": "demo", "name": "Demo", "color": "7B42BC" }],
+  "flags": [
+    {
+      "key": "new-checkout",
+      "name": "New checkout",
+      "kind": "boolean",
+      "variations": [{ "value": true }, { "value": false }],
+      "defaults": { "onVariation": 0, "offVariation": 1 },
+      "clientSideAvailability": { "usingEnvironmentId": true },
+      "environments": {
+        "demo": { "on": false, "fallthrough": { "variation": 1 }, "rules": [] }
+      }
+    }
+  ],
+  "segments": [
+    { "key": "beta-users", "name": "Beta users", "environment": "demo", "included": ["user-123"] }
+  ],
+  "aiConfigs": [
+    {
+      "key": "support-agent",
+      "name": "Support agent",
+      "variations": [
+        {
+          "key": "default",
+          "model": { "id": "anthropic.claude-sonnet" },
+          "messages": [{ "role": "system", "content": "You are a helpful support agent." }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# Multi-stage, arm64-safe, non-root. Don't add --platform; the publish workflow builds linux/arm64.
+FROM node:22-slim AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+
+FROM node:22-slim AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# No LaunchDarkly keys or depot values here. They're injected at runtime.
+RUN npm run build --if-present && npm prune --omit=dev
+
+FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /app ./
+USER node
+EXPOSE 3000
+CMD ["node", "dist/server.js"]

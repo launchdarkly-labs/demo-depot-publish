@@ -1,0 +1,26 @@
+# Demo Depot starter Dockerfile for a Python web app (Flask, FastAPI, Streamlit).
+# arm64-safe: python:*-slim is multi-arch. Keep the base pinned.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080
+WORKDIR /app
+
+# System deps only if a wheel needs them (e.g. build-essential for packages without arm64 wheels).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Never bake LaunchDarkly keys in: the depot injects LD_SDK_KEY / LD_CLIENT_SIDE_ID at runtime.
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -fsS http://localhost:8080/healthz || exit 1
+
+# Listen on 0.0.0.0 and the declared ingress port. Example for Flask with gunicorn:
+#   CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "2", "app:app"]
+CMD ["python", "app.py"]

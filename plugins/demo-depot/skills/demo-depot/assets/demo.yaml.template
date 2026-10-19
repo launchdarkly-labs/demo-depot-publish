@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://demodepot.launchdarklydemos.com/schemas/demo.schema.json
+schemaVersion: 1
+slug: REPLACE-kebab-case-slug          # 3–40 chars, a-z 0-9 -
+name: REPLACE Demo Name                # ≤60 chars
+summary: REPLACE one sentence naming the LaunchDarkly capability and the outcome (≤140 chars).
+owners:
+  - REPLACE.owner@launchdarkly.com
+tags: [REPLACE]                        # e.g. ai-configs, guarded-rollouts, experimentation, release-automation
+media:
+  cover: ./media/cover.png
+  # loop: ./media/loop.mp4
+links: {}
+  # talkTrack: https://...
+parameters:
+  - name: CUSTOMER_NAME
+    label: Prospect name
+    type: string
+    default: Acme Corp
+  # - name: DB_PASSWORD              # typed by the SE at launch, masked, delivered as an ECS secret
+  #   label: Database password
+  #   type: string
+  #   secret: true
+  #   required: true
+runtime:
+  ingress:
+    container: web
+    port: 3000
+    healthCheck: { path: /healthz }
+  containers:
+    - name: web
+      build: { context: ./web }
+      cpu: 512
+      memory: 1024
+      env: { NODE_ENV: production }
+      # secrets: [THIRD_PARTY_API_KEY]   # set values in the portal, never in the repo
+capabilities: []                        # [bedrock] for LLM calls via the task role
+launchdarkly:
+  # mode: checkout                     # demo bound to ONE existing project (GitHub App, Terraform, Vega): no seed,
+  # project: { key: my-project, environment: production }   # one SE at a time, checked back in at teardown
+  seed: ./ld/seed.json
+  apiToken: none                        # project-writer only if the app changes flags itself
+  # inject: { sdkKey: SDK_KEY }         # map to the env names the code already reads instead of renaming code
+access:
+  default: sso
+  allowPublic: false
+lifecycle:
+  pausable: true
+verify:
+  http:
+    - path: /healthz
+      expectStatus: 200
+    - path: /
+      expectStatus: 200
+      # expectBodyContains: Welcome       # something the page always renders

@@ -1,0 +1,35 @@
+## What this shows
+
+One short paragraph: the customer problem, the LaunchDarkly capability, and the outcome.
+
+## LaunchDarkly features
+
+- REPLACE (for example, AI Configs: swap the model and prompt with no deploy)
+
+## The story (about 10 minutes)
+
+1. **Open the app.** What the prospect sees first, and what to say.
+2. **Toggle `REPLACE-flag-key`.** What changes, and why it matters.
+3. **The aha moment.** For example, the guarded rollout auto-rolls back when the error rate spikes.
+
+## Created during the demo
+
+Resources the story creates live. They are deliberately **not** in `ld/seed.json`; pre-creating them would break the beat.
+
+| Key or pattern | Created by | When |
+| --- | --- | --- |
+| REPLACE (e.g. whatever the GitHub App proposes on PR 1) | REPLACE (GitHub App / Vega / Terraform / `ldcli` / on stage) | REPLACE (beat 2) |
+
+## Launch parameters
+
+| Parameter | What it does |
+| --- | --- |
+| `CUSTOMER_NAME` | Shown in the app header |
+
+## Setup the SE does
+
+None. Or list anything that's manual today.
+
+## Known limitations
+
+- REPLACE (for example, chat history resets when the demo is paused)
