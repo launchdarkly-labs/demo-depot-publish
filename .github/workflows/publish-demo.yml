@@ -4,7 +4,7 @@
 # Published copy:  launchdarkly-labs/demo-depot-publish (public), so demo repos of any visibility can
 # call it. After editing here run `pnpm sync:publish`, which pushes the copy and moves its v1 tag.
 #
-# Demo repo side (written by `dd init`):
+# Demo repo side (written by `ddu init`):
 #   on: { push: { tags: ["v*"] } }
 #   jobs:
 #     publish:
