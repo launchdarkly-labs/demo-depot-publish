@@ -24,9 +24,9 @@ on:
   workflow_call:
     inputs:
       stage:
-        description: Depot stage to publish to (dev or prod)
+        description: Depot stage to publish to (prod is the SE catalog; dev is for testing the depot itself)
         type: string
-        default: dev
+        default: prod
       aws-account-id:
         description: Demo Depot AWS account
         type: string
