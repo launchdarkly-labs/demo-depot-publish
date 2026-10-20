@@ -30,6 +30,17 @@ Either way the result is the same set of files (see *Files to produce*) and the 
 10. **Publish workflow** from `assets/publish.yml`; `.gitignore`/`.dockerignore` must exclude `.env*`, `node_modules`, build output.
 11. **Validate, run, hand off.** `python3 scripts/validate_demo.py <repo>` must report 0 errors; fix warnings unless there's a reason not to. If Docker is available, build for `linux/arm64` and `curl` the health route. Then tell the owner: what you inferred and want confirmed (rules, parameters, slug), which secrets they or the SE must supply, and that tagging `v0.1.0` publishes. The *Make demos SE-friendly* ideas below (a `CUSTOMER_NAME` parameter, a reset action, visible flag state) are app changes: in a retrofit, offer them in the hand-off rather than adding them unasked. The repo must live under the `launchdarkly-labs` or `launchdarkly-demos` GitHub org (any visibility) for publishing to be allowed.
 
+## Publish and watch (with the Demo Depot MCP server)
+
+If the `demo-depot` MCP server is connected (the Claude Code plugin registers it; it needs `dd auth login` once with a token from the portal's Settings › API tokens), finish the job end to end instead of handing off:
+
+1. `publish_instructions` tells you the allowed orgs and the tag command for this depot. `whoami` tells you whether the owner still needs to save a LaunchDarkly token.
+2. `validate_manifest` with demo.yaml (parsed to JSON) and the seed catches contract errors before the tag; `dd validate` or `scripts/validate_demo.py` still covers Dockerfiles, cover, and code.
+3. Commit, tag (`git tag v0.1.0 && git push origin v0.1.0`), then poll `publish_status` every minute or so: the Actions run takes 2 to 5 minutes, verification about one more. `failed` comes with a reason; fix it, bump the patch version, push the tag again.
+4. When the version is `verified`, `launch_demo` it with a note like "skill check", wait for `get_instance` to report `ready`, open the URL, then `teardown`. Tell the owner the demo is live in the catalog.
+
+Without the MCP server, hand off as before: tell the owner what to confirm and that tagging publishes.
+
 ## Build a new demo
 
 1. **Plan the story first.** Decide which LaunchDarkly features the demo shows, what the SE clicks in what order, and what the "aha" moment is. That story becomes `DEMO.md` and the seed file.

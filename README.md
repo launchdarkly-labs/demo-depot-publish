@@ -31,6 +31,14 @@ dd --help
 
 Re-run the `npm i -g …` line to update.
 
+**2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `dd` CLI. Once per machine:
+
+```bash
+dd auth login        # paste a token from the portal: Settings › API tokens
+```
+
+Then Claude can list the catalog, launch and tear down demos, watch a publish, and validate a manifest, all as you. Without the plugin: `claude mcp add demo-depot -- dd mcp`.
+
 **3. Publish.** Your repo must live in `launchdarkly-labs` or `launchdarkly-demos` (any visibility). Tag it:
 
 ```bash

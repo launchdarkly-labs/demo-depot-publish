@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "demo-depot": {
+      "command": "dd",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
