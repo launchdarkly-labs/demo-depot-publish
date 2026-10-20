@@ -39,6 +39,13 @@ ddu auth login        # paste a token from the portal: Settings › API tokens
 
 Then Claude can list the catalog, launch and tear down demos, watch a publish, and validate a manifest, all as you. Without the plugin: `claude mcp add demo-depot -- ddu mcp`.
 
+No CLI? The depot is also a remote MCP server at `https://demodepot.launchdarklydemos.com/mcp`:
+
+- **claude.ai / Claude Desktop:** Settings → Connectors → *Add custom connector*, paste the URL, then click **Allow** on the Demo Depot page that opens.
+- **Claude Code:** `claude mcp add --transport http demo-depot https://demodepot.launchdarklydemos.com/mcp`, then `/mcp` to sign in.
+
+Each connection appears under the portal's Settings › API tokens; revoke it there to disconnect.
+
 **3. Publish.** Your repo must live in `launchdarkly-labs` or `launchdarkly-demos` (any visibility). Tag it:
 
 ```bash

@@ -32,7 +32,7 @@ Either way the result is the same set of files (see *Files to produce*) and the 
 
 ## Publish and watch (with the Demo Depot MCP server)
 
-If the `demo-depot` MCP server is connected (the Claude Code plugin registers it; it needs `ddu auth login` once with a token from the portal's Settings › API tokens), finish the job end to end instead of handing off:
+If the `demo-depot` MCP server is connected, finish the job end to end instead of handing off. It's available two ways: the Claude Code plugin registers `ddu mcp` (needs `ddu auth login` once with a token from the portal's Settings › API tokens), and the depot itself is a remote MCP server at `https://demodepot.launchdarklydemos.com/mcp` (claude.ai / Claude Desktop: Settings › Connectors › Add custom connector; Claude Code: `claude mcp add --transport http demo-depot <that URL>`, then `/mcp` to sign in). Same tools either way.
 
 1. `publish_instructions` tells you the allowed orgs and the tag command for this depot. `whoami` tells you whether the owner still needs to save a LaunchDarkly token.
 2. `validate_manifest` with demo.yaml (parsed to JSON) and the seed catches contract errors before the tag; `ddu validate` or `scripts/validate_demo.py` still covers Dockerfiles, cover, and code.
