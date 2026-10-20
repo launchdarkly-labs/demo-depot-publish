@@ -29,7 +29,7 @@ ddu --help
 | `ddu ld export --project <key>` | Turn a real LaunchDarkly project into `ld/seed.json` |
 | `ddu skill install` | Copy the skill into `~/.claude/skills` for other tools |
 
-Re-run the `npm i -g …` line to update. (Releases before 0.3.0 installed the command as `dd`, which shadowed the Unix `dd` utility; upgrading replaces it with `ddu` and removes the old link.)
+Re-run the `npm i -g …` line to update. If npm says `EACCES` on `/usr/local/lib/node_modules`, your Node is system-wide: prefix the command with `sudo`, or give npm a user-owned prefix once (`npm config set prefix ~/.npm-global` and add `~/.npm-global/bin` to your PATH). (Releases before 0.3.0 installed the command as `dd`, which shadowed the Unix `dd` utility; upgrading replaces it with `ddu` and removes the old link.)
 
 **2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `ddu` CLI. Once per machine:
 
