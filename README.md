@@ -14,30 +14,30 @@ Then, in any demo repo: *"Using the demo-depot skill, make this repo ready for D
 
 Using claude.ai instead of Claude Code? Download `demo-depot.skill` from the [latest release](https://github.com/launchdarkly-labs/demo-depot-publish/releases/latest) and add it under Settings → Skills (or ask your admin to enable it for the organization).
 
-**2. The `dd` CLI** (optional; Node 20+, Docker only for `dd run`):
+**2. The `ddu` CLI** (optional; Node 20+, Docker only for `ddu run`):
 
 ```bash
 npm i -g https://github.com/launchdarkly-labs/demo-depot-publish/releases/latest/download/demo-depot-cli.tgz
-dd --help
+ddu --help
 ```
 
 | Command | What it does |
 | --- | --- |
-| `dd validate [path]` | Same checks the depot runs at publish time |
-| `dd init --slug my-demo --owner you@launchdarkly.com` | Scaffold the depot files into a repo |
-| `dd run` | Build and run the demo locally with the depot's network layout |
-| `dd ld export --project <key>` | Turn a real LaunchDarkly project into `ld/seed.json` |
-| `dd skill install` | Copy the skill into `~/.claude/skills` for other tools |
+| `ddu validate [path]` | Same checks the depot runs at publish time |
+| `ddu init --slug my-demo --owner you@launchdarkly.com` | Scaffold the depot files into a repo |
+| `ddu run` | Build and run the demo locally with the depot's network layout |
+| `ddu ld export --project <key>` | Turn a real LaunchDarkly project into `ld/seed.json` |
+| `ddu skill install` | Copy the skill into `~/.claude/skills` for other tools |
 
-Re-run the `npm i -g …` line to update.
+Re-run the `npm i -g …` line to update. (Releases before 0.3.0 installed the command as `dd`, which shadowed the Unix `dd` utility; upgrading replaces it with `ddu` and removes the old link.)
 
-**2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `dd` CLI. Once per machine:
+**2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `ddu` CLI. Once per machine:
 
 ```bash
-dd auth login        # paste a token from the portal: Settings › API tokens
+ddu auth login        # paste a token from the portal: Settings › API tokens
 ```
 
-Then Claude can list the catalog, launch and tear down demos, watch a publish, and validate a manifest, all as you. Without the plugin: `claude mcp add demo-depot -- dd mcp`.
+Then Claude can list the catalog, launch and tear down demos, watch a publish, and validate a manifest, all as you. Without the plugin: `claude mcp add demo-depot -- ddu mcp`.
 
 **3. Publish.** Your repo must live in `launchdarkly-labs` or `launchdarkly-demos` (any visibility). Tag it:
 

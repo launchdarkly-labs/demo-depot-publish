@@ -32,10 +32,10 @@ Either way the result is the same set of files (see *Files to produce*) and the 
 
 ## Publish and watch (with the Demo Depot MCP server)
 
-If the `demo-depot` MCP server is connected (the Claude Code plugin registers it; it needs `dd auth login` once with a token from the portal's Settings › API tokens), finish the job end to end instead of handing off:
+If the `demo-depot` MCP server is connected (the Claude Code plugin registers it; it needs `ddu auth login` once with a token from the portal's Settings › API tokens), finish the job end to end instead of handing off:
 
 1. `publish_instructions` tells you the allowed orgs and the tag command for this depot. `whoami` tells you whether the owner still needs to save a LaunchDarkly token.
-2. `validate_manifest` with demo.yaml (parsed to JSON) and the seed catches contract errors before the tag; `dd validate` or `scripts/validate_demo.py` still covers Dockerfiles, cover, and code.
+2. `validate_manifest` with demo.yaml (parsed to JSON) and the seed catches contract errors before the tag; `ddu validate` or `scripts/validate_demo.py` still covers Dockerfiles, cover, and code.
 3. Commit, tag (`git tag v0.1.0 && git push origin v0.1.0`), then poll `publish_status` every minute or so: the Actions run takes 2 to 5 minutes, verification about one more. `failed` comes with a reason; fix it, bump the patch version, push the tag again.
 4. When the version is `verified`, `launch_demo` it with a note like "skill check", wait for `get_instance` to report `ready`, open the URL, then `teardown`. Tell the owner the demo is live in the catalog.
 
@@ -51,7 +51,7 @@ Without the MCP server, hand off as before: tell the owner what to confirm and t
 6. **Add the media and `DEMO.md`**, using `assets/DEMO.md.template`.
 7. **Add the publish workflow** from `assets/publish.yml`.
 8. **Validate:** `python3 scripts/validate_demo.py <repo-root>`. Fix every error, and fix the warnings unless you have a reason not to.
-9. **Run it locally** with `dd run` if the CLI is installed, and walk through the story end to end.
+9. **Run it locally** with `ddu run` if the CLI is installed, and walk through the story end to end.
 10. **Hand off.** Tell the owner what to set in the portal (demo secrets), which `secret: true` parameters SEs will be asked for at launch, and to tag `v0.1.0` to publish.
 
 ## The runtime contract
@@ -103,7 +103,7 @@ TLS terminates at the load balancer, so the app sees plain HTTP. Trust `X-Forwar
 
 All of a demo's containers run in one Fargate task and share a network namespace. A Docker Compose hostname like `http://api:4000` does not resolve there.
 
-Use `http://localhost:4000`, read from an env var with that default, for example `API_URL`. Give every container a distinct port. `dd run` mirrors this by sharing one network namespace locally.
+Use `http://localhost:4000`, read from an env var with that default, for example `API_URL`. Give every container a distinct port. `ddu run` mirrors this by sharing one network namespace locally.
 
 ### 5. Listen on `0.0.0.0` on the declared ingress port, and expose a cheap health endpoint
 
@@ -138,7 +138,7 @@ Each launch starts from an empty LaunchDarkly project, so the seed has to contai
 
 Hardcoded fallbacks in SDK calls must produce a sensible "off" experience, never a crash. The validator scans the code for flag keys that are missing from the seed.
 
-The easiest correct path is to build the demo against a real LaunchDarkly project, then run `dd ld export --project <key>` to generate the seed.
+The easiest correct path is to build the demo against a real LaunchDarkly project, then run `ddu ld export --project <key>` to generate the seed.
 
 ### 9. Keep third-party secrets out of the repo
 
