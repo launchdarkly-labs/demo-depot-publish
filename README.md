@@ -17,7 +17,7 @@ Using claude.ai instead of Claude Code? Download `demo-depot.skill` from the [la
 **2. The `ddu` CLI** (optional; Node 20+, Docker only for `ddu run`):
 
 ```bash
-npm i -g https://github.com/launchdarkly-labs/demo-depot-publish/releases/latest/download/demo-depot-cli.tgz
+npm i -g --allow-remote=root https://github.com/launchdarkly-labs/demo-depot-publish/releases/latest/download/demo-depot-cli.tgz
 ddu --help
 ```
 
@@ -29,7 +29,7 @@ ddu --help
 | `ddu ld export --project <key>` | Turn a real LaunchDarkly project into `ld/seed.json` |
 | `ddu skill install` | Copy the skill into `~/.claude/skills` for other tools |
 
-Re-run the `npm i -g …` line to update. If npm says `EACCES` on `/usr/local/lib/node_modules`, your Node is system-wide: prefix the command with `sudo`, or give npm a user-owned prefix once (`npm config set prefix ~/.npm-global` and add `~/.npm-global/bin` to your PATH). (Releases before 0.3.0 installed the command as `dd`, which shadowed the Unix `dd` utility; upgrading replaces it with `ddu` and removes the old link.)
+Re-run the `npm i -g …` line to update. The `--allow-remote=root` flag is for npm 12, which refuses URL installs by default (`EALLOWREMOTE`); older npm ignores it. If npm says `EACCES` on `/usr/local/lib/node_modules`, your Node is system-wide: prefix the command with `sudo`, or give npm a user-owned prefix once (`npm config set prefix ~/.npm-global` and add `~/.npm-global/bin` to your PATH). (Releases before 0.3.0 installed the command as `dd`, which shadowed the Unix `dd` utility; upgrading replaces it with `ddu` and removes the old link.)
 
 **2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `ddu` CLI. Once per machine:
 
