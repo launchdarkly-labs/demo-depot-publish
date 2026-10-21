@@ -34,8 +34,10 @@ Re-run the `npm i -g …` line to update. The `--allow-remote=root` flag is for 
 **2b. Let Claude drive the depot (MCP).** The plugin also registers a `demo-depot` MCP server that runs through the `ddu` CLI. Once per machine:
 
 ```bash
-ddu auth login        # paste a token from the portal: Settings › API tokens
+ddu auth login        # paste a Demo Depot API token (starts with ddp.), created at https://demodepot.launchdarklydemos.com/settings#api-tokens
 ```
+
+That is a Demo Depot token from the portal's **Settings › API tokens**, not your LaunchDarkly API token (which the portal also asks for, in a different section of the same page).
 
 Then Claude can list the catalog, launch and tear down demos, watch a publish, and validate a manifest, all as you. Without the plugin: `claude mcp add demo-depot -- ddu mcp`.
 
