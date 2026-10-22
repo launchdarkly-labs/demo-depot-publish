@@ -1,6 +1,6 @@
 {
   "name": "demo-depot",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Build LaunchDarkly SE demos that are ready to publish to Demo Depot: inventory a repo, write demo.yaml and the seed, validate, and hand off.",
   "author": {
     "name": "LaunchDarkly SE Center of Excellence"

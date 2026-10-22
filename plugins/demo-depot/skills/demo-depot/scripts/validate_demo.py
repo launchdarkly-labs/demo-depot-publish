@@ -229,6 +229,30 @@ def validate_manifest(root: Path, m: dict, r: Report, allowed_domains: list[str]
             if "default" in p:
                 r.err(f"{f}.default: secret parameters can't have a default")
 
+    param_by_name = {p.get("name"): p for p in params if isinstance(p, dict)}
+    ilinks = m.get("instanceLinks") or []
+    if not isinstance(ilinks, list) or len(ilinks) > 5:
+        r.err("instanceLinks: up to 5 {label, url} entries")
+        ilinks = []
+    for i, l in enumerate(ilinks):
+        f = f"instanceLinks[{i}]"
+        if not isinstance(l, dict):
+            r.err(f"{f}: must be {{label, url}}")
+            continue
+        label = l.get("label")
+        if not isinstance(label, str) or not label.strip() or len(label) > 60:
+            r.err(f"{f}.label: required, up to 60 characters")
+        url = l.get("url")
+        if not isinstance(url, str) or not url.strip() or len(url) > 500:
+            r.err(f"{f}.url: required")
+            continue
+        for ref in dict.fromkeys(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", url)):
+            p = param_by_name.get(ref)
+            if p is None:
+                r.err(f"{f}.url: references unknown parameter {ref}")
+            elif p.get("secret"):
+                r.err(f"{f}.url: can't reference secret parameter {ref} (it would be shown in the portal)")
+
     containers = []
     if tier == 1:
         rt = m.get("runtime") or {}

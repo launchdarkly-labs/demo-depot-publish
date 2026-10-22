@@ -11,6 +11,9 @@ media:
   # loop: ./media/loop.mp4
 links: {}
   # talkTrack: https://...
+# instanceLinks:                        # shown on each running instance; ${NAME} = a non-secret parameter
+#   - label: Salesforce (Triage Demo)
+#     url: "${SF_INSTANCE_URL}/lightning/n/Triage_Demo"
 parameters:
   - name: CUSTOMER_NAME
     label: Prospect name
