@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "demo-depot": {
-      "command": "dd",
+      "command": "ddu",
       "args": ["mcp"],
       "env": {}
     }

@@ -14,7 +14,7 @@
       "defaults": { "onVariation": 0, "offVariation": 1 },
       "clientSideAvailability": { "usingEnvironmentId": true },
       "environments": {
-        "demo": { "on": false, "fallthrough": { "variation": 1 }, "rules": [] }
+        "demo": { "on": false, "offVariation": 1, "fallthrough": { "variation": 0 }, "rules": [] }
       }
     }
   ],
@@ -63,6 +63,8 @@ The importer turns these into LaunchDarkly semantic-patch instructions. Variatio
 ```
 
 - `fallthrough` is either `{ "variation": n }` or `{ "rollout": {...} }`. Seed the default rule as a rollout (even `0`/`100000`) if the story later changes weights through the API.
+- `fallthrough` is what the flag serves once it is turned on; `offVariation` is what it serves while off. For a flag that starts off, point `fallthrough` at the new experience and `offVariation` at the current one, so the SE's first toggle is visible without editing rules.
+- Flags evaluated by the JavaScript, React, or mobile SDKs need `clientSideAvailability: { "usingEnvironmentId": true }` (mobile: `"usingMobileKey": true`). A fresh project has no other way to expose them, and without it client-side SDKs silently get the fallback value.
 - A rule needs `clauses` (each with `attribute`, `op`, `values`; `contextKind` defaults to `user`, `negate` to `false`) and exactly one of `variation` or `rollout`. Clause ops are the LaunchDarkly ones: `in`, `contains`, `startsWith`, `endsWith`, `matches`, `lessThan`, `greaterThan`, `before`, `after`, `semVerEqual`, `segmentMatch`.
 - Segments support `included` and `excluded` context keys (kind `user`) today. Rule-based segments are not applied yet; use flag rules instead.
 - Rules, targets, and fallthrough are applied only when the import creates the flag, so re-running a seed never overwrites targeting an SE changed during a demo.
@@ -91,5 +93,6 @@ How the importer applies a seed:
 
 - Generate the seed from a working project with `ddu ld export --project <key>` rather than writing it by hand.
 - Give flags a `name` and `description`, because SEs see them in the LaunchDarkly UI during the call.
-- Set each flag's starting state (`on`, `fallthrough`) to where the story begins. Usually that means the new experience is off.
+- Set each flag's starting state to where the story begins. Usually that means `on: false` with `offVariation` on the current experience and `fallthrough` on the new one, so the first toggle is visible.
+- Give every flag the browser evaluates `clientSideAvailability.usingEnvironmentId: true`, and subscribe to `change` events in the app so the SE never has to reload.
 - For guarded rollouts or experiments, also seed the metrics the demo emits, once the importer supports them. Until then, document them in DEMO.md under "Setup the SE does".

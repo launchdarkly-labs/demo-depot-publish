@@ -42,7 +42,7 @@
 - Running instances stay on the version they launched with. New launches default to the latest verified version.
 - Schema changes must be additive within `schemaVersion: 1`. A breaking change requires `schemaVersion: 2`, a migration note here, and ingest support for both versions for 90 days.
 
-## Owner CLI (`dd`)
+## Owner CLI (`ddu`)
 
 | Command | What it does |
 | --- | --- |

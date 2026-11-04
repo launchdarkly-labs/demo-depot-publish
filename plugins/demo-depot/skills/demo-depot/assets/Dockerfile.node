@@ -17,4 +17,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app ./
 USER node
 EXPOSE 3000
+# Same route as runtime.ingress.healthCheck in demo.yaml. Node 22 has fetch, so no curl or wget is needed.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 CMD ["node", "dist/server.js"]

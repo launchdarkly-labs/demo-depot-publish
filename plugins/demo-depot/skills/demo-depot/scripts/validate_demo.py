@@ -92,6 +92,8 @@ class Report:
     def __init__(self):
         self.errors: list[str] = []
         self.warnings: list[str] = []
+        # Seed flags without clientSideAvailability.usingEnvironmentId, for the client-side SDK check.
+        self.not_client_side: set[str] = set()
 
     def err(self, msg):
         self.errors.append(msg)
@@ -378,6 +380,8 @@ def validate_seed(root: Path, m: dict, r: Report):
                 nvar = len(item.get("variations") or [])
                 for env, cfg in (item.get("environments") or {}).items():
                     check_targeting(f"seed.flags[{k}].environments[{env}]", cfg, nvar, r)
+                if not (item.get("clientSideAvailability") or {}).get("usingEnvironmentId"):
+                    r.not_client_side.add(k)
             if kind == "segments" and item.get("environment") not in envs:
                 r.err(f"seed.segments[{k}]: environment must be one of {sorted(envs)}")
         if kind != "segments":
@@ -390,6 +394,11 @@ AI_CALL_RE = re.compile(r"\b\w*ai\w*\.(?:config|completionConfig|agentConfig|age
 BUILD_TIME_RE = re.compile(r"\b(?:VITE_|NEXT_PUBLIC_|REACT_APP_)\w*(?:LD|LAUNCHDARKLY|CLIENT_SIDE|SDK_KEY)\w*")
 HARDCODED_KEY_RE = re.compile(r"['\"]((?:sdk|mob|api)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})['\"]")
 LOOPBACK_LISTEN_RE = re.compile(r"\.listen\(\s*[\w.]+\s*,\s*['\"](?:127\.0\.0\.1|localhost)['\"]")
+# Client-side SDKs evaluate flags with the environment ID, so seed flags must opt in to that.
+CLIENT_SDK_RE = re.compile(
+    r"launchdarkly-js-client-sdk|launchdarkly-react-client-sdk|@launchdarkly/js-client-sdk|@launchdarkly/react-native-client-sdk"
+    r"|launchdarkly-react-native-client-sdk|LDClient\.initialize\s*\(|ldclient\.min\.js|asyncWithLDProvider|withLDProvider"
+)
 
 
 CREATED_DURING_DEMO_BY = {"github-app", "vega", "terraform", "cli", "api", "presenter", "other"}
@@ -456,12 +465,17 @@ def scan_code(root: Path, containers, seed_keys, r: Report):
     names = [c.get("name") for c in containers if c.get("name")]
     svc_re = re.compile(r"https?://(" + "|".join(map(re.escape, names)) + r"):\d+") if names else None
     used = {}
-    for f in iter_files(root, exts=SRC_EXT):
+    client_sdk_in = None
+    for f in iter_files(root, exts=SRC_EXT | {".html"}, names={"package.json"}):
         try:
             text = f.read_text(errors="ignore")
         except OSError:
             continue
         rp = rel(root, f)
+        if client_sdk_in is None and CLIENT_SDK_RE.search(text):
+            client_sdk_in = rp
+        if f.suffix not in SRC_EXT:
+            continue
         for k in FLAG_CALL_RE.findall(text) + AI_CALL_RE.findall(text):
             used.setdefault(k, rp)
         if BUILD_TIME_RE.search(text):
@@ -476,6 +490,12 @@ def scan_code(root: Path, containers, seed_keys, r: Report):
         for k, where in sorted(used.items()):
             if k not in seed_keys:
                 r.warn(f"flag/AI Config {k!r} is used in {where} but isn't in the seed")
+    if client_sdk_in and r.not_client_side:
+        for k in sorted(r.not_client_side):
+            r.warn(
+                f"seed.flags[{k}]: no clientSideAvailability.usingEnvironmentId, but {client_sdk_in} uses a client-side SDK. "
+                "If the browser evaluates this flag it will only ever see the fallback value."
+            )
 
     dockerfiles = [p for p in iter_files(root, names={"Dockerfile"})] + [p for p in root.rglob("*.Dockerfile") if not any(s in SKIP_DIRS for s in p.relative_to(root).parts)]
     for df in dockerfiles:

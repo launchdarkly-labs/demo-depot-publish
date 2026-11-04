@@ -10,7 +10,7 @@
       "defaults": { "onVariation": 0, "offVariation": 1 },
       "clientSideAvailability": { "usingEnvironmentId": true },
       "environments": {
-        "demo": { "on": false, "fallthrough": { "variation": 1 }, "rules": [] }
+        "demo": { "on": false, "offVariation": 1, "fallthrough": { "variation": 0 }, "rules": [] }
       }
     }
   ],

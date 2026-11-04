@@ -44,14 +44,14 @@ Without the MCP server, hand off as before: tell the owner what to confirm and t
 ## Build a new demo
 
 1. **Plan the story first.** Decide which LaunchDarkly features the demo shows, what the SE clicks in what order, and what the "aha" moment is. That story becomes `DEMO.md` and the seed file.
-2. **Build the app against the runtime contract** below. Retrofitting is harder than starting right.
+2. **Build the app against the runtime contract** below. Retrofitting is harder than starting right. Subscribe to flag changes from the first commit (see *React to flag changes live* under *Make demos SE-friendly*): the live flip is usually the aha moment, and bolting a listener on later means reworking how the page renders.
 3. **Write the manifest** from `assets/demo.yaml.template`. See `references/manifest.md` for every field.
 4. **Write `ld/seed.json`** with every flag, segment, and AI Config that must exist before the demo starts. Anything the story creates live (GitHub App, Vega, Terraform, CLI, an AI Config built on stage) stays out and is listed in `DEMO.md` as created during the demo. See `references/seed.md`.
 5. **Containerize** using `assets/Dockerfile.node` or `assets/Dockerfile.python` as the starting point: arm64-safe, pinned base, non-root, `HEALTHCHECK` on the health route.
 6. **Add the media and `DEMO.md`**, using `assets/DEMO.md.template`.
 7. **Add the publish workflow** from `assets/publish.yml`.
 8. **Validate:** `python3 scripts/validate_demo.py <repo-root>`. Fix every error, and fix the warnings unless you have a reason not to.
-9. **Run it locally** with `ddu run` if the CLI is installed, and walk through the story end to end.
+9. **Run it locally** and walk through the story end to end against a real LaunchDarkly project. `ddu run --ld-project <key> --ld-env <key>` fetches that project's keys (it needs `LD_API_TOKEN`) but does not import the seed, so create the seeded flags there first, or build against that project and `ddu ld export` it. Without the CLI, put `LD_CLIENT_SIDE_ID` and `LD_SDK_KEY` in `.env.local` and start the app directly. Flip each flag and confirm the page changes without a reload. If no project is available, at least run the app with no LaunchDarkly env vars and confirm it renders its "not configured" state, which is what the depot's verifier sees.
 10. **Hand off.** Tell the owner what to set in the portal (demo secrets), which `secret: true` parameters SEs will be asked for at launch, and to tag `v0.1.0` to publish.
 
 ## The runtime contract
@@ -138,6 +138,10 @@ Each launch starts from an empty LaunchDarkly project, so the seed has to contai
 
 Hardcoded fallbacks in SDK calls must produce a sensible "off" experience, never a crash. The validator scans the code for flag keys that are missing from the seed.
 
+Flags the browser or a mobile app evaluates need `clientSideAvailability: { usingEnvironmentId: true }` in the seed (`usingMobileKey: true` for mobile SDKs). Without it, the JavaScript, React, and mobile SDKs silently receive the fallback, and nothing changes when the SE flips the flag. The validator warns when a client-side SDK is in the code and a seed flag lacks it.
+
+Point each flag's `fallthrough` at the new experience even when the flag starts off: `on: false`, `offVariation` on the current experience, `fallthrough.variation` on the new one. The fallthrough is what the flag serves the moment the SE turns it on, so this makes the first toggle visible without editing rules.
+
 The easiest correct path is to build the demo against a real LaunchDarkly project, then run `ddu ld export --project <key>` to generate the seed.
 
 ### 9. Keep third-party secrets out of the repo
@@ -156,10 +160,20 @@ Log to stdout and stderr, as JSON lines if convenient. The portal tails these lo
 
 ## Make demos SE-friendly
 
+- **React to flag changes live.** The moment the SE saves a flag, the page should change on its own: no reload, no polling. In the browser, register a listener and re-render from it; the JavaScript SDK opens its streaming connection as soon as a `change` listener exists:
+
+  ```js
+  const client = LDClient.initialize(cfg.clientSideId, context);
+  await client.waitForInitialization(10);
+  render(client.variation("promo-banner", false));
+  client.on("change:promo-banner", (current) => render(current));
+  ```
+
+  The React SDK's `useFlags()` re-renders on its own. For server-rendered pages, subscribe on the server (Node: `client.on("update:<key>", …)` or `client.flagTracker`; Python: `client.flag_tracker.add_listener`) and push the new value to the browser over SSE or a WebSocket. Show the received change in the UI (a value pill, a timestamped event log) so the SE can point at it.
 - **Personalize with `parameters`.** A `CUSTOMER_NAME` parameter, and optionally a logo URL or industry enum, lets an SE tailor the demo on the launch form. Read them as env vars. Mark passwords and keys the SE types at launch with `secret: true`: masked on the form, delivered to the container as an ECS secret, never stored on the instance.
 - **Every launch is attributed to the SE.** Projects are created in the shared Demo Engineering LaunchDarkly account with the SE's own API token, so the demo shouldn't assume a particular account or project key: read `LD_PROJECT_KEY` and `LD_ENV_KEY` from env if it needs them.
 - **Simulate traffic.** Demos for guarded rollouts, experiments, or metrics need events flowing to produce interesting charts. Add a small `traffic` sidecar container that drives realistic requests, with `dependsOn: [web]`. Make its intensity a parameter if that helps the story.
-- **Keep the SE in control during a call.** Show the current flag state in the UI, and offer a visible "reset demo" action that restores seed data.
+- **Keep the SE in control during a call.** Show the current flag state in the UI, link straight to the flag in LaunchDarkly (`https://app.launchdarkly.com/projects/${LD_PROJECT_KEY}/flags/<key>/targeting?env=${LD_ENV_KEY}&selected-env=${LD_ENV_KEY}`, built from the injected env vars), give browser contexts a stable key (for example from `localStorage`) so rollouts stay sticky, and offer a visible "reset demo" action that restores seed data.
 - **Fail visibly but gracefully.** If an LLM call or the LaunchDarkly connection fails, show a clear in-app banner. Never show a blank page.
 
 ## Demos bound to one LaunchDarkly project (checkout mode)
@@ -183,9 +197,12 @@ ld/seed.json                     LaunchDarkly seed (references/seed.md)
 media/cover.png                  16:9, ≥1600×900, <2 MB
 media/loop.mp4                   optional: 5–15 s, muted, <10 MB
 <container>/Dockerfile           one per container (assets/Dockerfile.node)
+<container>/package-lock.json    commit lockfiles: the Dockerfile template runs npm ci
 .github/workflows/publish.yml    assets/publish.yml
 .dockerignore / .gitignore       must exclude .env*, node_modules, build output
 ```
+
+**Browser SDK.** Serve the LaunchDarkly JavaScript SDK from `node_modules` (for example `express.static` on `launchdarkly-js-client-sdk/dist`) or bundle it, rather than loading it from a CDN, so the page has no external dependency at demo time.
 
 **Cover image.** If the app runs locally and Playwright is available, take a 1600×900 screenshot of the most visually compelling screen, with a flag in its "on" state, and save it as `media/cover.png`. If you can't, run `python3 scripts/make_cover.py --name "<name>" --summary "<summary>" [--image <screenshot-or-logo>] media/cover.png` (Pillow; the script prints a one-line Docker fallback if Pillow is missing) and tell the owner to replace it with a real screenshot before tagging a release. Don't leave the cover missing, because the validator fails without it.
 
@@ -200,6 +217,8 @@ Before you call a demo done:
 - [ ] `python3 scripts/inventory_repo.py .` was read before changing an existing repo, and every flag key it found (literal, constant, or env-driven) is accounted for: in the seed, as a parameter, or listed in `DEMO.md` as created during the demo (GitHub App, Vega, Terraform, CLI). Nothing the story creates live is pre-created.
 - [ ] `python3 scripts/validate_demo.py .` reports 0 errors.
 - [ ] Every flag, AI Config, and segment the code uses is in the seed. The app also works with every flag at its fallback.
+- [ ] Every flag the browser or a mobile app evaluates has `clientSideAvailability.usingEnvironmentId: true` (or `usingMobileKey`) in the seed, and each flag's `fallthrough` points at the new experience so the first toggle is visible.
+- [ ] Flag changes reach the UI without a reload (a `change` listener, or a server-side listener pushing to the page), confirmed locally against a real LaunchDarkly project.
 - [ ] No keys or URLs are baked in at build time. The browser gets its config from the server.
 - [ ] Containers reach each other through `localhost`, and the health check has no external dependencies.
 - [ ] The Dockerfiles are arm64-safe, use pinned bases, run as non-root, and don't bake in LaunchDarkly keys (multi-stage for new Node demos; an existing single-stage Dockerfile is fine).
