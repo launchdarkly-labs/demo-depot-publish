@@ -91,6 +91,19 @@ DEMO_TIME_RE = re.compile(
 )
 DEMO_TIME_FILE_RE = re.compile(r"(\.launchdarkly/coderefs\.ya?ml$|\.tf$|terraform/)")
 
+# ---- generators: traffic / data / metric pumps that should run as a sidecar ----
+GEN_NAME_RE = re.compile(r"(traffic|load[-_]?(gen|test)|simulat|generat|synthetic|seed[-_]?(events|data|metrics)|faker|k6|locust|artillery|gatling|data[-_]?gen|gen[-_]?data|metric[-_]?gen|pump|replay|bot|activity|workload)", re.I)
+GEN_LOOP_RE = re.compile(r"while\s*\(?\s*(true|True|1)\s*\)?\s*[:{]|for\s*\(\s*;\s*;\s*\)|setInterval\s*\(|schedule\.(every|run_pending)|asyncio\.(sleep|create_task)|time\.sleep\(|await\s+(sleep|delay|wait)\(|setTimeout\s*\(\s*\w*(loop|tick|run|send|fire|pump)", re.I)
+GEN_SLEEP_RE = re.compile(r"time\.sleep\(|asyncio\.sleep\(|setInterval\(|setTimeout\(|sleep\(|\.sleep\(", re.I)
+GEN_RANDOM_RE = re.compile(r"\bMath\.random\b|\brandom\.(choice|randint|random|uniform|sample|shuffle)|\bfaker\b|\buuid\b|\bcrypto\.randomUUID\b", re.I)
+GEN_HTTP_RE = re.compile(r"\bfetch\s*\(|\brequests\.(get|post|put|delete)\b|\baxios\b|\bhttpx\b|\burllib\.request\b|\bhttp\.(request|get)\s*\(|\bgot\s*\(|\bundici\b|\bcurl\s", re.I)
+GEN_TARGET_RE = re.compile(r"localhost:\d+|127\.0\.0\.1:\d+|(APP|BASE|TARGET|API|WEB|SERVER)_?URL|http://web\b|http://app\b", re.I)
+GEN_TOOL_RE = re.compile(r"from\s+[\"']k6(/|[\"'])|\bimport\s+http\s+from\s+[\"']k6|from\s+locust\s+import|class\s+\w+\(HttpUser\)|config:\s*\n\s*target:|\bartillery\b", re.I)
+GEN_SDK_RE = re.compile(r"launchdarkly|ldclient|LDClient", re.I)
+GEN_TRACK_RE = re.compile(r"\.(track|identify|flush)\s*\(")
+GEN_MANUAL_RE = re.compile(r"(run|start|kick ?off|trigger|execute|launch)\s+(the\s+)?(traffic|load|generator|simulat\w*|script)\b|manually|on demand|when you want|before the demo|during the demo", re.I)
+
+
 
 def read(p: Path) -> str:
     try:
@@ -130,6 +143,7 @@ def inventory(root: Path) -> dict:
         "health": {"routes": [], "docker": []},
         "existing": {},
         "notes": [],
+        "generators": [],
     }
     files = list(walk(root))
     by_name = {}
@@ -381,7 +395,96 @@ def inventory(root: Path) -> dict:
     out["flagCreation"]["dynamicKeys"] = dynamic
     for k in ("literal", "fromEnv", "fromConstant"):
         out["launchdarkly"]["keys"][k] = sorted(set(out["launchdarkly"]["keys"][k]))
+    detect_generators(root, files, out)
     return out
+
+
+def detect_generators(root: Path, files: list, out: dict) -> None:
+    """Find traffic / data / metric generators: code that loops, sleeps, fakes contexts, and either
+    hits the app over HTTP or pumps LaunchDarkly events, without listening on a port itself. These
+    belong in a sidecar container, not in the app's process and not forgotten in a README."""
+    pkg_scripts: dict[str, dict] = {}
+    for p in files:
+        if p.name == "package.json":
+            try:
+                pkg = json.loads(read(p))
+            except Exception:
+                continue
+            for name, cmd in (pkg.get("scripts") or {}).items():
+                pkg_scripts[name] = {"command": cmd, "package": rel(root, p)}
+    dockerfile_cmds = {d["path"]: (d.get("cmd") or "") for d in out["containers"]["dockerfiles"]}
+    compose_text = "\n".join(read(root / c["path"]) for c in out["containers"]["compose"])
+    readme = "\n".join(read(p) for p in files if p.suffix.lower() in DOC_EXTS and p.name.lower().startswith("readme"))
+    found = []
+    for p in files:
+        if p.suffix not in CODE_EXTS or p.name.endswith((".test.ts", ".test.js", ".spec.ts", ".spec.js", "_test.py")):
+            continue
+        text = read(p)
+        if not text:
+            continue
+        r = rel(root, p)
+        signals = []
+        score = 0
+        if GEN_TOOL_RE.search(text):
+            signals.append("load-test tool (k6/locust/artillery)"); score += 4
+        if GEN_NAME_RE.search(r):
+            signals.append("name"); score += 2
+        if GEN_LOOP_RE.search(text) and GEN_SLEEP_RE.search(text):
+            signals.append("loop with sleep/interval"); score += 2
+        elif GEN_LOOP_RE.search(text):
+            signals.append("loop"); score += 1
+        if GEN_RANDOM_RE.search(text):
+            signals.append("random/fake data"); score += 1
+        http = bool(GEN_HTTP_RE.search(text))
+        if http:
+            signals.append("outbound HTTP"); score += 1
+        if GEN_TARGET_RE.search(text):
+            signals.append("targets the app (localhost / *_URL)"); score += 1
+        sdk = bool(GEN_SDK_RE.search(text))
+        if sdk and GEN_TRACK_RE.search(text):
+            signals.append("LaunchDarkly track/identify/flush"); score += 2
+        elif sdk and EVAL_CALL_RE.search(text):
+            signals.append("LaunchDarkly evaluations"); score += 1
+        listens = any(rx.search(text) for rx, _ in LISTEN_RES)
+        if listens:
+            continue  # a server, not a generator
+        if score < 4 or not (http or sdk):
+            continue
+        # how is it run today?
+        run_as = []
+        for name, sc in pkg_scripts.items():
+            if p.name in sc["command"] or r in sc["command"]:
+                run_as.append({"kind": "package-script", "name": name, "command": sc["command"], "package": sc["package"]})
+        for dpath, cmd in dockerfile_cmds.items():
+            if cmd and (p.name in cmd or p.stem in cmd):
+                run_as.append({"kind": "dockerfile", "path": dpath, "cmd": cmd})
+        if compose_text and (p.name in compose_text or r in compose_text):
+            run_as.append({"kind": "compose-service"})
+        script_names = [sc["name"] for sc in run_as if sc["kind"] == "package-script"]
+        mentioned = [ln.strip()[:160] for ln in readme.splitlines()
+                     if p.name in ln or r in ln or any(re.search(rf"\b(run|exec)\s+{re.escape(n)}\b", ln) for n in script_names)]
+        background = any(x["kind"] in ("dockerfile", "compose-service") for x in run_as)
+        manual_hint = any(GEN_MANUAL_RE.search(ln) for ln in mentioned)
+        invocation = "background" if background and not manual_hint else ("manual" if (manual_hint or run_as or mentioned) else "unknown")
+        lang = {".py": "python", ".js": "node", ".mjs": "node", ".cjs": "node", ".ts": "node", ".go": "go", ".rb": "ruby", ".java": "java", ".kt": "kotlin", ".cs": "dotnet"}.get(p.suffix, p.suffix.lstrip("."))
+        env_names = sorted({n for rx in ENV_READ_RES[:-1] for n in rx.findall(text)})
+        found.append({
+            "file": r,
+            "language": lang,
+            "confidence": "high" if score >= 6 else "medium",
+            "score": score,
+            "signals": signals,
+            "usesLaunchDarklySdk": sdk,
+            "runAs": run_as,
+            "docMentions": mentioned[:5],
+            "invocation": invocation,
+            "env": env_names,
+        })
+    found.sort(key=lambda g: -g["score"])
+    out["generators"] = found
+    for g in found:
+        if g["invocation"] == "manual":
+            out["notes"].append(f"{g['file']}: generator that someone runs by hand today; as a sidecar, give it a TRAFFIC_MODE parameter (default off/steady) and/or have it watch a traffic-mode flag so the SE controls it from LaunchDarkly")
 
 
 def report(inv: dict) -> str:
@@ -427,6 +530,18 @@ def report(inv: dict) -> str:
     L.append(f"- context attributes set in code: {inv['launchdarkly']['contextAttributes'] or '-'}")
     if inv["launchdarkly"]["unresolved"]:
         L.append(f"- unresolved evaluation arguments: {[(u['file'], u['line'], u['arg']) for u in inv['launchdarkly']['unresolved']]}")
+    L.append("\n## Generators (traffic / data / metrics)")
+    gens = inv.get("generators") or []
+    if not gens:
+        L.append("- none detected (nothing loops+sleeps and talks to the app or pumps LaunchDarkly events without listening on a port)")
+    for g in gens:
+        how = "; ".join(
+            (f"package script `{x['name']}`" if x["kind"] == "package-script" else f"Dockerfile {x['path']}" if x["kind"] == "dockerfile" else "compose service")
+            for x in g["runAs"]) or "no runner found"
+        L.append(f"- {g['file']} ({g['language']}, {g['confidence']}): {', '.join(g['signals'])}; LD SDK {'yes' if g['usesLaunchDarklySdk'] else 'no'}; runs today via {how}; invocation: {g['invocation']}")
+        for mnt in g["docMentions"][:2]:
+            L.append(f"    docs: {mnt}")
+        L.append("    → sidecar container (dependsOn the ingress container, target it over localhost); control with a TRAFFIC_MODE parameter and/or a traffic-mode flag the SE flips in LaunchDarkly")
     fc = inv["flagCreation"]
     L.append("\n## Who creates the flags")
     verdict = {
